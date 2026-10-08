@@ -1,0 +1,10 @@
+License status / 许可状态
+
+The supplied workspace did not contain an identifiable root LICENSE file.
+This reorganization does not grant a new license to upstream LGMRec code,
+datasets, features, or third-party materials. Existing copyright notices
+and archived materials remain unchanged. Confirm the applicable upstream
+licenses before redistribution or publication.
+
+原工作区未提供可确认的根目录许可证。本次整理不擅自赋予 MIT、Apache
+或其它授权；发布前请核对上游代码、数据和特征的实际许可。

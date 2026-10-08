@@ -1,0 +1,23 @@
+# C0 by default. The v11 candidate is explicitly opt-in, not a proven upgrade.
+implementation_version: lgmrec-opt-behavior-stage1-v2
+feat_mod_mode: 'off'
+score_mode: original
+train_context: full
+directed_align_mode: 'off'
+align_weight: 0.01
+joint_fusion_mode: 'off'
+fusion_beta: 0.1
+joint_fusion_gate: 'off'
+behavior_view_mode: 'off'
+behavior_eta: 0.2
+# Compatibility defaults, not empirically established optimal settings.
+behavior_topk: 10
+behavior_minimum: 2
+behavior_residual_target: both
+behavior_graph_mode: cooccurrence
+behavior_graph_seed: 0
+behavior_self_loop: true
+behavior_edge_weight: binary
+behavior_block_size: 1024
+lambda_hcl: null
+ablation: null

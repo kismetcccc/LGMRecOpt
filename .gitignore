@@ -1,0 +1,47 @@
+__pycache__/
+.pytest_cache/
+test_runtime/
+log/
+saved/
+data/runs/
+references/legacy/
+references/releases/
+*.egg-info/
+build/
+dist/
+recommend_topk/
+data/*/*.npy
+data/*/*.inter
+
+# Local environments, editor state and temporary test/document work
+.venv/
+venv/
+.idea/
+.vscode/
+.workbuddy/
+.docx-work/
+.pytest-*/
+*.py[cod]
+*.docx
+/artifact.md
+# Historical workspace material is retained locally, outside the code repository.
+/references/
+
+# Credentials must never be committed
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Datasets and generated experiment artifacts stay local
+data/
+*.pth
+*.pt
+*.ckpt
+*.npy
+*.npz
+*.log
+references/experiments/**/runs/
+references/experiments/**/raw/
+references/experiments/**/exp*_out*/
