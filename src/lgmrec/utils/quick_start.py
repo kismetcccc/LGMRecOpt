@@ -233,10 +233,12 @@ def quick_start(model, dataset, config_dict, save_model=True):
     final_trainer = selected_trainer if grid_search else trainer
     final_model = selected_model if grid_search else model
     behavior_view = getattr(final_model, 'behavior_view', None)
+    hyper_behavior = getattr(final_model, 'hyper_behavior', None)
     return {'valid_result': hyper_ret[best_result_idx][1],
             'effective_config': {k: str(v) if isinstance(v, torch.device) else v
                                  for k, v in config.final_config_dict.items()},
             'behavior_graph': behavior_view.metadata if behavior_view is not None else None,
+            'hyper_behavior_graph': hyper_behavior.metadata if hyper_behavior is not None else None,
             'best_epoch': selected_epoch if grid_search else trainer.best_epoch_idx,
             'checkpoint': getattr(final_trainer, 'saved_model_file', None),
             'data_signature': config['data_signature'],

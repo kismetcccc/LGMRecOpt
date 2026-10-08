@@ -1,5 +1,5 @@
 # C0 by default. The v11 candidate is explicitly opt-in, not a proven upgrade.
-implementation_version: lgmrec-opt-behavior-stage1-v2
+implementation_version: lgmrec-opt-behavior-hyper-v3
 feat_mod_mode: 'off'
 score_mode: original
 train_context: full
@@ -19,5 +19,8 @@ behavior_graph_seed: 0
 behavior_self_loop: true
 behavior_edge_weight: binary
 behavior_block_size: 1024
+# Experimental: 0 preserves the stage-one model exactly. Not a proven upgrade.
+hyper_behavior_weight: 0.0
+hyper_behavior_graph_mode: cooccurrence
 lambda_hcl: null
 ablation: null

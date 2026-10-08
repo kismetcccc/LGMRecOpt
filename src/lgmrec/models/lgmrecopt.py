@@ -8,8 +8,9 @@ from .cross_ilda import ILALoss
 from .lgmrec import LGMRec
 from .msca_behavior import MSCABehaviorView
 from .smore_fusion import CrossModalSpectrumFusion
+from .behavior_hypergraph import BehaviorHypergraphRefiner
 
-IMPLEMENTATION_VERSION = 'lgmrec-opt-behavior-stage1-v2'
+IMPLEMENTATION_VERSION = 'lgmrec-opt-behavior-hyper-v3'
 FEAT_MOD_SCALE = 0.5
 SCORE_MODES = ('original', 'separate', 'cross')
 CROSS_BRANCH_PAIRS = (
@@ -147,6 +148,24 @@ class LGMRecOpt(LGMRec):
                 self_loop=config['behavior_self_loop'], edge_weight=config['behavior_edge_weight'],
                 block_size=config['behavior_block_size'],
             )
+        self.hyper_behavior_weight = float(config['hyper_behavior_weight'])
+        if not math.isfinite(self.hyper_behavior_weight) or not 0 <= self.hyper_behavior_weight <= 1:
+            raise ValueError('hyper_behavior_weight must be finite and in [0, 1]')
+        hyper_mode = config['hyper_behavior_graph_mode']
+        if hyper_mode not in ('cooccurrence', 'random_relabel'):
+            raise ValueError('Unknown hyper_behavior_graph_mode')
+        self.hyper_behavior = None
+        if self.hyper_behavior_weight > 0:
+            if self.behavior_view is None:
+                raise ValueError('Hypergraph refinement requires behavior_view_mode=msca_struct')
+            if config['behavior_graph_mode'] != 'cooccurrence':
+                raise ValueError('Keep the residual graph real; randomize hyper_behavior_graph_mode only')
+            if self.n_hyper_layer < 1 or self.alpha <= 0:
+                raise ValueError('Hypergraph refinement requires active global hypergraph propagation')
+            self.hyper_behavior = BehaviorHypergraphRefiner(
+                self.behavior_view.structural_adjacency, self.hyper_behavior_weight,
+                graph_mode=hyper_mode, seed=config['behavior_graph_seed'],
+            )
         value = config['lambda_hcl']
         self.lambda_hcl = self.cl_weight if value is None else float(value)
         if not math.isfinite(self.lambda_hcl) or self.lambda_hcl < 0:
@@ -165,6 +184,10 @@ class LGMRecOpt(LGMRec):
                 nn.init.zeros_(layer.bias)
             self.feat_mod = nn.ModuleDict(layers)
         self.pre_epoch_processing()
+
+    def hyperedge_logits(self, features, projection):
+        logits = super().hyperedge_logits(features, projection)
+        return logits if self.hyper_behavior is None else self.hyper_behavior(logits)
 
     def mge(self, str='v'):
         if self.feat_mod is None:

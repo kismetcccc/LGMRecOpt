@@ -1,6 +1,10 @@
 # LGMRec / LGMRecOpt
 
-基于 TRAIN-only 协议的多模态推荐研究代码。LGMRecOpt 直接继承 LGMRec，默认 C0；v11 特征调节仅作显式可选候选，没有稳定提升声明。
+基于 TRAIN-only 协议的多模态推荐研究代码。LGMRecOpt 直接继承 LGMRec，默认 C0；可选增强均需在匹配协议下验证，不预先声明稳定提升。
+
+最新候选：行为共现校正超边分配（v3），在保留 LGMRec 超图主体的基础上，尝试用 TRAIN 关系补充超边分配。
+默认 `hyper_behavior_weight=0` 关闭，保留原有行为残差实验结果的可复现性。
+公式、参考来源、消融和服务器运行命令见 [v3 实验说明](docs/HYPER_BEHAVIOR_V3.md)。
 
 ## 项目结构
 

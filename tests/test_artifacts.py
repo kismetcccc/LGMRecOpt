@@ -10,8 +10,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize('behavior', ['off', 'msca_struct'])
-def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior):
+@pytest.mark.parametrize('behavior,hyper_weight', [('off', 0), ('msca_struct', 0), ('msca_struct', .2)])
+def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hyper_weight):
     data = tmp_path / 'data' / 'baby'
     data.mkdir(parents=True)
     for name in ('image_feat.npy', 'text_feat.npy'):
@@ -24,7 +24,9 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior):
                '--run-dir', str(run), '--set', 'epochs=1', '--set', 'use_gpu=false',
                '--set', 'topk=[1,2]', '--set', 'valid_metric=Recall@2',
                '--set', 'save_recommended_topk=false',
-               '--set', f'behavior_view_mode={behavior}']
+               '--set', f'behavior_view_mode={behavior}',
+               '--set', f'hyper_behavior_weight={hyper_weight}',
+               '--set', 'behavior_minimum=1']
     first = subprocess.run(command, capture_output=True)
     assert first.returncode == 0, first.stderr.decode(errors='replace')
     status_bytes = (run/'status.json').read_bytes()
@@ -33,6 +35,11 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior):
     # YAML 1.1 parses an unquoted CLI 'off' as False; the model accepts both.
     assert status['effective_config']['behavior_view_mode'] == (False if behavior == 'off' else behavior)
     assert status['effective_config']['protocol'] == 'train_only'
+    if hyper_weight:
+        assert status['hyper_behavior_graph']['weight'] == hyper_weight
+        assert status['hyper_behavior_graph']['items_with_neighbors'] > 0
+    else:
+        assert status['hyper_behavior_graph'] is None
     if behavior == 'msca_struct':
         assert len(status['behavior_graph']['fingerprint']) == 64
     else:

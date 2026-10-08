@@ -7,6 +7,22 @@ import subprocess
 import sys
 
 
+VARIANTS = {
+    'A': ('LGMRec', {}),
+    'B': ('LGMRecOpt', {}),
+    'item': ('LGMRecOpt', {'behavior_residual_target': 'item'}),
+    'user': ('LGMRecOpt', {'behavior_residual_target': 'user'}),
+    'random': ('LGMRecOpt', {'behavior_graph_mode': 'random_relabel'}),
+    'zero': ('LGMRecOpt', {'behavior_eta': 0}),
+    'hyper10': ('LGMRecOpt', {'hyper_behavior_weight': .1}),
+    'hyper20': ('LGMRecOpt', {'hyper_behavior_weight': .2}),
+    'hyper40': ('LGMRecOpt', {'hyper_behavior_weight': .4}),
+    'hyper20_random': ('LGMRecOpt', {'hyper_behavior_weight': .2,
+                                  'hyper_behavior_graph_mode': 'random_relabel'}),
+    'hyper20_only': ('LGMRecOpt', {'hyper_behavior_weight': .2, 'behavior_eta': 0}),
+}
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--output', type=Path, required=True)
@@ -22,19 +38,23 @@ def main():
     p.add_argument('--epochs', type=int, default=1000)
     p.add_argument('--stopping-step', type=int, default=20)
     p.add_argument('--gpu', type=int, default=0)
-    p.add_argument('--ablations', action='store_true')
+    selection = p.add_mutually_exclusive_group()
+    selection.add_argument('--ablations', action='store_true')
+    selection.add_argument('--variants', nargs='+', choices=list(VARIANTS),
+                           help='Run only these variants; default A B')
     p.add_argument('--execute', action='store_true', help='Default only prints commands')
     a = p.parse_args()
     if len(set(a.seeds)) != len(a.seeds):
         p.error('Seeds must be unique')
+    if any(seed < 0 for seed in a.seeds):
+        p.error('Seeds must be non-negative')
     if a.output.exists():
         p.error('Output already exists; choose a fresh experiment directory')
-    variants = {'A': ('LGMRec', {}), 'B': ('LGMRecOpt', {})}
-    if a.ablations:
-        variants.update(item=('LGMRecOpt', {'behavior_residual_target': 'item'}),
-                        user=('LGMRecOpt', {'behavior_residual_target': 'user'}),
-                        random=('LGMRecOpt', {'behavior_graph_mode': 'random_relabel'}),
-                        zero=('LGMRecOpt', {'behavior_eta': 0}))
+    names = a.variants or (['A', 'B', 'item', 'user', 'random', 'zero']
+                           if a.ablations else ['A', 'B'])
+    if len(set(names)) != len(names):
+        p.error('Variants must be unique')
+    variants = {name: VARIANTS[name] for name in names}
     commands = []
     train = Path(__file__).resolve().with_name('train.py')
     for seed in a.seeds:
@@ -56,7 +76,8 @@ def main():
     if a.execute:
         a.output.mkdir(parents=True, exist_ok=False)
         with (a.output / 'manifest.json').open('x', encoding='utf-8') as f:
-            json.dump(dict(protocol='train_only', report_test=False, commands=commands), f, indent=2)
+            json.dump(dict(protocol='train_only', report_test=False,
+                           variants=names, seeds=a.seeds, commands=commands), f, indent=2)
         for cmd in commands:
             subprocess.run(cmd, check=True)
 

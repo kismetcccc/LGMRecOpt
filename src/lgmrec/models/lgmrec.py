@@ -150,16 +150,20 @@ class LGMRec(GeneralRecommender):
     def global_hypergraph_scale(self):
         """Return the residual scale of the normalized global hypergraph."""
         return self.alpha
+
+    def hyperedge_logits(self, features, projection):
+        """Unchanged base logits; extensions may refine before assignment."""
+        return torch.mm(features, projection)
     
     def forward(self):
         # hyperedge dependencies constructing
         if self.v_feat is not None:
-            iv_hyper = torch.mm(self.image_embedding.weight, self.v_hyper)
+            iv_hyper = self.hyperedge_logits(self.image_embedding.weight, self.v_hyper)
             uv_hyper = torch.mm(self.adj, iv_hyper)
             iv_hyper = self._hyperedge_distribution(iv_hyper)
             uv_hyper = self._hyperedge_distribution(uv_hyper)
         if self.t_feat is not None:
-            it_hyper = torch.mm(self.text_embedding.weight, self.t_hyper)
+            it_hyper = self.hyperedge_logits(self.text_embedding.weight, self.t_hyper)
             ut_hyper = torch.mm(self.adj, it_hyper)
             it_hyper = self._hyperedge_distribution(it_hyper)
             ut_hyper = self._hyperedge_distribution(ut_hyper)
