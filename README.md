@@ -2,7 +2,11 @@
 
 基于 TRAIN-only 协议的多模态推荐研究代码。LGMRecOpt 直接继承 LGMRec，默认 C0；可选增强均需在匹配协议下验证，不预先声明稳定提升。
 
-最新候选：行为共现校正超边分配（v3），在保留 LGMRec 超图主体的基础上，尝试用 TRAIN 关系补充超边分配。
+最新候选：v4 超边成员质量归一化。v3 三种子实验没有证明稳定提升，继续保留 B 作为对照。
+实测表格、v4 公式及运行命令见 [v3 复盘与 v4 计划](docs/HYPER_V3_RESULTS_V4_PLAN.md)。
+v4 默认 `hyper_degree_power=0` 关闭，尚无真实数据集效果结论。
+
+此前候选：行为共现校正超边分配（v3），在保留 LGMRec 超图主体的基础上，尝试用 TRAIN 关系补充超边分配。
 默认 `hyper_behavior_weight=0` 关闭，保留原有行为残差实验结果的可复现性。
 公式、参考来源、消融和服务器运行命令见 [v3 实验说明](docs/HYPER_BEHAVIOR_V3.md)。
 

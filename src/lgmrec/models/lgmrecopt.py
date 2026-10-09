@@ -9,8 +9,9 @@ from .lgmrec import LGMRec
 from .msca_behavior import MSCABehaviorView
 from .smore_fusion import CrossModalSpectrumFusion
 from .behavior_hypergraph import BehaviorHypergraphRefiner
+from .balanced_hypergraph import BalancedHGNNLayer
 
-IMPLEMENTATION_VERSION = 'lgmrec-opt-behavior-hyper-v3'
+IMPLEMENTATION_VERSION = 'lgmrec-opt-balanced-hyper-v4'
 FEAT_MOD_SCALE = 0.5
 SCORE_MODES = ('original', 'separate', 'cross')
 CROSS_BRANCH_PAIRS = (
@@ -26,6 +27,13 @@ class LGMRecOpt(LGMRec):
         if config['protocol'] != 'train_only':
             raise ValueError('Only train_only is supported')
         super().__init__(config, dataset)
+        self.hyper_degree_power = float(config['hyper_degree_power'])
+        if not math.isfinite(self.hyper_degree_power) or not 0 <= self.hyper_degree_power <= 1:
+            raise ValueError('hyper_degree_power must be finite and in [0, 1]')
+        if self.hyper_degree_power > 0:
+            if self.alpha <= 0:
+                raise ValueError('Hyperedge balancing requires an active global hypergraph')
+            self.hgnnLayer = BalancedHGNNLayer(self.n_hyper_layer, self.hyper_degree_power)
         self.score_mode = config['score_mode'] or 'original'
         if self.score_mode not in SCORE_MODES:
             raise ValueError(

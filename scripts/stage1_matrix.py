@@ -8,6 +8,8 @@ import sys
 
 
 VARIANTS = {
+    'edge05': ('LGMRecOpt', {'hyper_degree_power': .5, 'hyper_behavior_weight': 0.0}),
+    'edge10': ('LGMRecOpt', {'hyper_degree_power': 1.0, 'hyper_behavior_weight': 0.0}),
     'A': ('LGMRec', {}),
     'B': ('LGMRecOpt', {}),
     'item': ('LGMRecOpt', {'behavior_residual_target': 'item'}),

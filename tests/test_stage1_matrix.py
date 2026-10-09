@@ -67,6 +67,18 @@ def test_default_dry_run_and_legacy_ablations(tmp_path, monkeypatch, capsys):
     assert not root.exists()
 
 
+def test_v4_variants_keep_v3_disabled(tmp_path, monkeypatch, capsys):
+    module = script()
+    monkeypatch.setattr(sys, 'argv', arguments(tmp_path / 'v4') +
+                        ['--variants', 'B', 'edge05', 'edge10'])
+    module.main()
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 9
+    for line in lines:
+        if 'edge05-seed' in line:
+            assert 'hyper_degree_power=0.5' in line and 'hyper_behavior_weight=0.0' in line
+        elif 'edge10-seed' in line:
+            assert 'hyper_degree_power=1.0' in line and 'hyper_behavior_weight=0.0' in line
 @pytest.mark.parametrize('extra', [
     ['--variants', 'B', 'B'], ['--seeds', '999', '999'], ['--seeds', '-1'],
     ['--variants', 'unknown'], ['--ablations', '--variants', 'B'],

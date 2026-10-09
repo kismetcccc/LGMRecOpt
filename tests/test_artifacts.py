@@ -10,8 +10,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize('behavior,hyper_weight', [('off', 0), ('msca_struct', 0), ('msca_struct', .2)])
-def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hyper_weight):
+@pytest.mark.parametrize('behavior,hyper_weight,degree_power', [('off', 0, 0), ('msca_struct', 0, 0), ('msca_struct', .2, 0), ('msca_struct', 0, .5)])
+def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hyper_weight, degree_power):
     data = tmp_path / 'data' / 'baby'
     data.mkdir(parents=True)
     for name in ('image_feat.npy', 'text_feat.npy'):
@@ -26,6 +26,7 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hy
                '--set', 'save_recommended_topk=false',
                '--set', f'behavior_view_mode={behavior}',
                '--set', f'hyper_behavior_weight={hyper_weight}',
+               '--set', f'hyper_degree_power={degree_power}',
                '--set', 'behavior_minimum=1']
     first = subprocess.run(command, capture_output=True)
     assert first.returncode == 0, first.stderr.decode(errors='replace')
@@ -35,6 +36,7 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hy
     # YAML 1.1 parses an unquoted CLI 'off' as False; the model accepts both.
     assert status['effective_config']['behavior_view_mode'] == (False if behavior == 'off' else behavior)
     assert status['effective_config']['protocol'] == 'train_only'
+    assert status['effective_config']['hyper_degree_power'] == degree_power
     if hyper_weight:
         assert status['hyper_behavior_graph']['weight'] == hyper_weight
         assert status['hyper_behavior_graph']['items_with_neighbors'] > 0
