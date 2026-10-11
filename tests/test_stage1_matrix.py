@@ -79,9 +79,32 @@ def test_v4_variants_keep_v3_disabled(tmp_path, monkeypatch, capsys):
             assert 'hyper_degree_power=0.5' in line and 'hyper_behavior_weight=0.0' in line
         elif 'edge10-seed' in line:
             assert 'hyper_degree_power=1.0' in line and 'hyper_behavior_weight=0.0' in line
+
+
+def test_mechanism_matrix(tmp_path, monkeypatch):
+    module = script()
+    root = tmp_path / 'mechanism'
+    monkeypatch.setattr(sys, 'argv', arguments(root) + ['--mechanism', '--execute'])
+    commands = []
+    monkeypatch.setattr(module.subprocess, 'run', lambda cmd, **kw: commands.append(cmd))
+    module.main()
+    manifest = json.loads((root / 'manifest.json').read_text())
+    assert manifest['variants'] == ['A', 'B', 'identity', 'random', 'item', 'user', 'no_self']
+    assert len(commands) == 21
+    for cmd in commands:
+        options = dict(cmd[i+1].split('=', 1) for i, arg in enumerate(cmd) if arg == '--set')
+        run = Path(cmd[cmd.index('--run-dir')+1]).name
+        assert 'hyper_degree_power' not in options and 'hyper_behavior_weight' not in options
+        if run.startswith('identity-'):
+            assert options['behavior_graph_mode'] == 'identity'
+        if run.startswith('no_self-'):
+            assert options['behavior_self_loop'] == 'False'
+
+
 @pytest.mark.parametrize('extra', [
     ['--variants', 'B', 'B'], ['--seeds', '999', '999'], ['--seeds', '-1'],
     ['--variants', 'unknown'], ['--ablations', '--variants', 'B'],
+    ['--mechanism', '--ablations'], ['--mechanism', '--variants', 'B'],
 ])
 def test_invalid_plan_rejected(tmp_path, monkeypatch, extra):
     module = script()

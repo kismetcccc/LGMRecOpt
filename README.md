@@ -2,9 +2,35 @@
 
 基于 TRAIN-only 协议的多模态推荐研究代码。LGMRecOpt 直接继承 LGMRec，默认 C0；可选增强均需在匹配协议下验证，不预先声明稳定提升。
 
-最新候选：v4 超边成员质量归一化。v3 三种子实验没有证明稳定提升，继续保留 B 作为对照。
+当前方向：先验证行为残差 B 的机制，不叠加新模块。v3 没有证明稳定提升；v4 两种归一化在三个种子上均低于同轮 B，默认继续关闭。
 实测表格、v4 公式及运行命令见 [v3 复盘与 v4 计划](docs/HYPER_V3_RESULTS_V4_PLAN.md)。
-v4 默认 `hyper_degree_power=0` 关闭，尚无真实数据集效果结论。
+v4 默认 `hyper_degree_power=0` 关闭。以下机制实验复用现有编码器，无新参数或损失。
+
+## 当前服务器验证：行为机制消融
+
+在安装本次提交的环境中，从项目根目录运行（先去掉 `--execute` 可预览）：
+
+```bash
+python -m pip install -e .
+python -B scripts/stage1_matrix.py \
+  --output data/runs/stage1-baby-mechanism-r1 \
+  --dataset baby --seeds 999 2026 2027 \
+  --learning-rate 0.0005 --batch-size 512 --weight-decay 1e-5 \
+  --eta 0.2 --topk 10 --minimum 2 --mechanism --execute
+```
+
+共 21 次训练：A（原始 LGMRec）、B（行为残差）、identity（仅自环）、random（重标记）、item、user、no_self（去自环）。所有组同轮运行，仅 VALID 选模，不评估 TEST。输出目录必须不存在；失败后保留产物，使用新目录和 `--variants` 补跑缺失组。
+
+设原主体表示为 U/V，物品 ID 表示为 E，TRAIN 归一化交互为 R，行为图为 S。
+现有分支是 B_I=SE、B_U=RSE，打分展开为：
+`(U + eta B_U)(V + eta B_I)^T = UV^T + eta U B_I^T + eta B_U V^T + eta^2 B_U B_I^T`。
+因此双侧残差同时改变交叉项和行为分支自身打分，不能仅凭总指标声称学到了新的高阶结构。
+
+identity 使用 S=I，仍保留用户侧 TRAIN 聚合和相同残差路径；它不是纯粹的全局分数缩放对照。
+random 保留图拓扑和度分布，不保持每个物品的度；no_self 同时改变归一化权重，不能只解释为去除了自身信息。
+先看每种子配对 R@20，再报告 N@20/R@50；不把不同轮次的 B 混合比较。
+只有真实图相对简单对照有一致收益，才继续跨数据集验证；否则简化或撤回分支。
+本轮不实施可靠负采样，不将 TRAIN 结构接近直接视为假负样本标签。
 
 此前候选：行为共现校正超边分配（v3），在保留 LGMRec 超图主体的基础上，尝试用 TRAIN 关系补充超边分配。
 默认 `hyper_behavior_weight=0` 关闭，保留原有行为残差实验结果的可复现性。

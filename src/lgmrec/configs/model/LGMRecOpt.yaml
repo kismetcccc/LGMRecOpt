@@ -15,6 +15,7 @@ behavior_topk: 10
 behavior_minimum: 2
 behavior_residual_target: both
 behavior_graph_mode: cooccurrence
+# identity is an ablation: no inter-item edges, same residual encoder.
 behavior_graph_seed: 0
 behavior_self_loop: true
 behavior_edge_weight: binary

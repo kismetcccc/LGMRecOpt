@@ -39,6 +39,27 @@ class Dataset:
         return matrix.asformat(form)
 
 
+def test_identity_control_forward_gradient_and_rng():
+    torch.manual_seed(17)
+    before = torch.random.get_rng_state().clone()
+    view = MSCABehaviorView(Dataset().inter_matrix(), 'cpu', graph_mode='identity')
+    assert torch.equal(before, torch.random.get_rng_state())
+    embeddings = torch.randn(6, 8, requires_grad=True)
+    actual = view(embeddings)
+    expected = torch.cat((view.normalized_interactions.to_dense() @ embeddings, embeddings))
+    torch.testing.assert_close(actual, expected)
+    actual_grad, = torch.autograd.grad(actual.square().sum(), embeddings)
+    expected_grad, = torch.autograd.grad(expected.square().sum(), embeddings)
+    torch.testing.assert_close(actual_grad, expected_grad)
+    assert view.metadata['graph_mode'] == 'identity'
+    assert view.metadata['normalized_nonzero_edges'] == 6
+    assert not view.state_dict()
+    real = MSCABehaviorView(Dataset().inter_matrix(), 'cpu')
+    assert real.cache_fingerprint != view.cache_fingerprint
+    with pytest.raises(ValueError, match='requires self_loop'):
+        MSCABehaviorView(Dataset().inter_matrix(), 'cpu', graph_mode='identity', self_loop=False)
+
+
 def tiny_config(tmp_path, **overrides):
     directory = tmp_path / 'baby'
     directory.mkdir(exist_ok=True)

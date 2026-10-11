@@ -87,7 +87,7 @@ def build_structural_adjacency(interaction_matrix, *, topk, minimum,
     for name, value in [('topk', topk), ('minimum', minimum), ('block_size', block_size)]:
         if isinstance(value, bool) or not isinstance(value, Integral) or value < 1:
             raise ValueError(f'{name} must be a positive integer')
-    if graph_mode not in ('cooccurrence', 'random_relabel'):
+    if graph_mode not in ('cooccurrence', 'random_relabel', 'identity'):
         raise ValueError('Unknown behavior graph mode')
     if edge_weight not in ('binary', 'count') or not isinstance(self_loop, bool):
         raise ValueError('Invalid edge_weight or self_loop')
@@ -95,6 +95,11 @@ def build_structural_adjacency(interaction_matrix, *, topk, minimum,
         raise ValueError('graph_seed must be a non-negative integer')
     interactions = _canonical_interactions(interaction_matrix)
     n_items = interactions.shape[1]
+    if graph_mode == 'identity':
+        # Same encoder and residual path, without inter-item propagation.
+        if not self_loop:
+            raise ValueError('identity graph requires self_loop=True')
+        return _scipy_to_torch(sp.eye(n_items, dtype=np.float32), device)
     rows, columns, weights = [], [], []
     for item in range(n_items):
         if item % block_size == 0:

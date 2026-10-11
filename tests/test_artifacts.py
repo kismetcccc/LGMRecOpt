@@ -10,8 +10,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize('behavior,hyper_weight,degree_power', [('off', 0, 0), ('msca_struct', 0, 0), ('msca_struct', .2, 0), ('msca_struct', 0, .5)])
-def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hyper_weight, degree_power):
+@pytest.mark.parametrize('behavior,hyper_weight,degree_power,graph', [
+    ('off', 0, 0, 'cooccurrence'), ('msca_struct', 0, 0, 'cooccurrence'),
+    ('msca_struct', .2, 0, 'cooccurrence'), ('msca_struct', 0, .5, 'cooccurrence'),
+    ('msca_struct', 0, 0, 'identity'),
+])
+def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hyper_weight, degree_power, graph):
     data = tmp_path / 'data' / 'baby'
     data.mkdir(parents=True)
     for name in ('image_feat.npy', 'text_feat.npy'):
@@ -25,6 +29,7 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hy
                '--set', 'topk=[1,2]', '--set', 'valid_metric=Recall@2',
                '--set', 'save_recommended_topk=false',
                '--set', f'behavior_view_mode={behavior}',
+               '--set', f'behavior_graph_mode={graph}',
                '--set', f'hyper_behavior_weight={hyper_weight}',
                '--set', f'hyper_degree_power={degree_power}',
                '--set', 'behavior_minimum=1']
@@ -44,6 +49,7 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hy
         assert status['hyper_behavior_graph'] is None
     if behavior == 'msca_struct':
         assert len(status['behavior_graph']['fingerprint']) == 64
+        assert status['behavior_graph']['graph_mode'] == graph
     else:
         assert status['behavior_graph'] is None
     assert Path(status['checkpoint']).is_file()

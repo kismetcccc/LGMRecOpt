@@ -15,6 +15,8 @@ VARIANTS = {
     'item': ('LGMRecOpt', {'behavior_residual_target': 'item'}),
     'user': ('LGMRecOpt', {'behavior_residual_target': 'user'}),
     'random': ('LGMRecOpt', {'behavior_graph_mode': 'random_relabel'}),
+    'identity': ('LGMRecOpt', {'behavior_graph_mode': 'identity'}),
+    'no_self': ('LGMRecOpt', {'behavior_self_loop': False}),
     'zero': ('LGMRecOpt', {'behavior_eta': 0}),
     'hyper10': ('LGMRecOpt', {'hyper_behavior_weight': .1}),
     'hyper20': ('LGMRecOpt', {'hyper_behavior_weight': .2}),
@@ -42,6 +44,8 @@ def main():
     p.add_argument('--gpu', type=int, default=0)
     selection = p.add_mutually_exclusive_group()
     selection.add_argument('--ablations', action='store_true')
+    selection.add_argument('--mechanism', action='store_true',
+                           help='Matched A/B, identity, random, single-side and no-self-loop controls')
     selection.add_argument('--variants', nargs='+', choices=list(VARIANTS),
                            help='Run only these variants; default A B')
     p.add_argument('--execute', action='store_true', help='Default only prints commands')
@@ -52,8 +56,9 @@ def main():
         p.error('Seeds must be non-negative')
     if a.output.exists():
         p.error('Output already exists; choose a fresh experiment directory')
-    names = a.variants or (['A', 'B', 'item', 'user', 'random', 'zero']
-                           if a.ablations else ['A', 'B'])
+    names = a.variants or (
+        ['A', 'B', 'identity', 'random', 'item', 'user', 'no_self'] if a.mechanism else
+        ['A', 'B', 'item', 'user', 'random', 'zero'] if a.ablations else ['A', 'B'])
     if len(set(names)) != len(names):
         p.error('Variants must be unique')
     variants = {name: VARIANTS[name] for name in names}
