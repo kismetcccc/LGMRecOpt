@@ -101,6 +101,18 @@ def test_mechanism_matrix(tmp_path, monkeypatch):
             assert options['behavior_self_loop'] == 'False'
 
 
+def test_cosine_matrix_changes_only_neighbor_ranking(tmp_path, monkeypatch, capsys):
+    module = script()
+    monkeypatch.setattr(sys, 'argv', arguments(tmp_path / 'cosine') +
+                        ['--variants', 'A', 'B', 'cosine'])
+    module.main()
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 9
+    for line in lines:
+        assert ('behavior_neighbor_score=cosine' in line) == ('cosine-seed' in line)
+        assert 'behavior_edge_weight=' not in line
+
+
 @pytest.mark.parametrize('extra', [
     ['--variants', 'B', 'B'], ['--seeds', '999', '999'], ['--seeds', '-1'],
     ['--variants', 'unknown'], ['--ablations', '--variants', 'B'],

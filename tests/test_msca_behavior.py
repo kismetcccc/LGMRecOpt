@@ -266,3 +266,41 @@ def test_empty_no_loop_graph_is_finite_and_invalid_parameters_fail():
         options.update(args)
         with pytest.raises(ValueError):
             build_structural_adjacency(r, **options)
+
+
+def test_cosine_ranking_matches_dense_reference_and_preserves_binary_weights():
+    # Item 1 co-occurs more with item 0, but has much greater TRAIN popularity.
+    pairs = [(u, i) for u, items in enumerate(
+        [[0, 1, 2], [0, 1, 2], [0, 1], [0], [1], [1], [1], [1], [1]])
+        for i in items]
+    r = sp.coo_matrix((np.ones(len(pairs)), tuple(zip(*pairs))), shape=(9, 4))
+    dense = r.toarray()
+    # Explicit reference avoids loading a second BLAS/OpenMP runtime on Windows.
+    counts = np.array([[(dense[:, i] * dense[:, j]).sum() for j in range(4)]
+                       for i in range(4)])
+    degree = dense.sum(0)
+    raw = np.eye(4, dtype=np.float32)
+    for i in range(4):
+        candidates = [j for j in range(4) if j != i and counts[i, j] >= 2]
+        if candidates:
+            j = min(candidates, key=lambda j: (-counts[i, j] / np.sqrt(degree[i]*degree[j]), j))
+            raw[i, j] = 1
+    scale = raw.sum(1) ** -.5
+    expected = torch.from_numpy(raw * scale[:, None] * scale[None, :])
+    for block in [1, 3, 1024]:
+        graph = build_structural_adjacency(r, topk=1, minimum=2, device='cpu',
+                                           neighbor_score='cosine', block_size=block)
+        torch.testing.assert_close(graph.to_dense(), expected)
+    original = build_structural_adjacency(r, topk=1, minimum=2, device='cpu').to_dense()
+    assert original[0, 1] > 0 and expected[0, 1] == 0 and expected[0, 2] > 0
+    view = MSCABehaviorView(r, 'cpu', topk=1, neighbor_score='cosine')
+    assert view.metadata['neighbor_score'] == 'cosine'
+    assert view.cache_fingerprint != MSCABehaviorView(r, 'cpu', topk=1).cache_fingerprint
+    # Duplicate events must not change distinct-user association or its fingerprint.
+    duplicate = sp.coo_matrix((np.ones(2*len(pairs)), tuple(zip(*(pairs+pairs)))), shape=r.shape)
+    other = MSCABehaviorView(duplicate, 'cpu', topk=1, neighbor_score='cosine')
+    assert other.cache_fingerprint == view.cache_fingerprint
+    with pytest.raises(ValueError, match='neighbor_score'):
+        MSCABehaviorView(r, 'cpu', neighbor_score='invalid')
+    empty = MSCABehaviorView(sp.csr_matrix((2, 4)), 'cpu', neighbor_score='cosine')
+    torch.testing.assert_close(empty.structural_adjacency.to_dense(), torch.eye(4))

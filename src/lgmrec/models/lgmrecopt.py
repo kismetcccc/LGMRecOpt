@@ -155,6 +155,7 @@ class LGMRecOpt(LGMRec):
                 graph_mode=config['behavior_graph_mode'], graph_seed=config['behavior_graph_seed'],
                 self_loop=config['behavior_self_loop'], edge_weight=config['behavior_edge_weight'],
                 block_size=config['behavior_block_size'],
+                neighbor_score=config['behavior_neighbor_score'],
             )
         self.hyper_behavior_weight = float(config['hyper_behavior_weight'])
         if not math.isfinite(self.hyper_behavior_weight) or not 0 <= self.hyper_behavior_weight <= 1:

@@ -8,6 +8,33 @@ v4 默认 `hyper_degree_power=0` 关闭。以下机制实验复用现有编码�
 
 ## 当前服务器验证：行为机制消融
 
+### 后续候选：按 TRAIN 余弦关联选择邻居（2026-10-12）
+
+已有机制消融支持保留行为残差，但不代表当前邻居选择最优。
+新候选仅将 Top-K 排序从共现次数 `c_ij` 改为 `c_ij / sqrt(d_i*d_j)`；
+`d_i` 为 TRAIN 中物品的不同交互用户数。最低共现门槛仍为 2，
+入选边仍二值化，自环、传播归一化、双侧残差和损失均不变。
+平分仍按物品 ID 排序。无新可学习参数，未验证涨点，也不宣称新颖性。
+默认 `behavior_neighbor_score=count` 保留原路径与历史图指纹；
+显式 `cosine` 会记录在配置、图元数据和图指纹中。
+
+```bash
+python -B scripts/stage1_matrix.py \
+  --output "data/runs/stage1-baby-cosine-$(date +%Y%m%d-%H%M%S)" \
+  --dataset baby --seeds 999 2026 2027 \
+  --learning-rate 0.002 --batch-size 512 --weight-decay 1e-5 \
+  --epochs 1000 --stopping-step 20 \
+  --eta 0.2 --topk 10 --minimum 2 --gpu 0 \
+  --variants A B cosine --execute
+```
+
+共 9 组，同轮 A/B/cosine 配对；固定超参数，只验证邻居排序机制。
+主要比较 cosine−B 的每种子 VALID R@20，同时报告 N@20 和 R@50。
+新候选可能放大低支持度关系，不解决孤立物品问题；不因单种子最高值升级默认。
+TRAIN-only，VALID 选模，TEST 不评估；检查点和旧实验均保留。
+
+### 原机制消融命令
+
 在安装本次提交的环境中，从项目根目录运行（先去掉 `--execute` 可预览）：
 
 ```bash

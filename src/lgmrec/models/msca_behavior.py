@@ -37,7 +37,7 @@ def _canonical_interactions(interaction_matrix):
 
 def behavior_graph_fingerprint(interaction_matrix, *, topk, minimum,
                                graph_mode='cooccurrence', graph_seed=0,
-                               self_loop=True, edge_weight='binary'):
+                               self_loop=True, edge_weight='binary', neighbor_score='count'):
     """Identify the exact TRAIN matrix and structural graph parameters."""
     matrix = _canonical_interactions(interaction_matrix)
     digest = hashlib.sha256()
@@ -49,6 +49,9 @@ def behavior_graph_fingerprint(interaction_matrix, *, topk, minimum,
     digest.update(json.dumps(dict(version=2, graph_mode=graph_mode,
         graph_seed=graph_seed if graph_mode == 'random_relabel' else None,
         self_loop=self_loop, edge_weight=edge_weight), sort_keys=True).encode())
+    # Preserve historical fingerprints for the unchanged default graph.
+    if neighbor_score != 'count':
+        digest.update(json.dumps(dict(neighbor_score=neighbor_score), sort_keys=True).encode())
     return digest.hexdigest()
 
 
@@ -78,7 +81,8 @@ def build_normalized_interactions(interaction_matrix, device):
 
 def build_structural_adjacency(interaction_matrix, *, topk, minimum,
                                device, graph_mode='cooccurrence', graph_seed=0,
-                               self_loop=True, edge_weight='binary', block_size=1024):
+                               self_loop=True, edge_weight='binary', block_size=1024,
+                               neighbor_score='count'):
     """Directed row-TopK graph; blockwise product bounds temporary row count.
 
     random_relabel permutes item identities, preserving topology and the
@@ -89,12 +93,16 @@ def build_structural_adjacency(interaction_matrix, *, topk, minimum,
             raise ValueError(f'{name} must be a positive integer')
     if graph_mode not in ('cooccurrence', 'random_relabel', 'identity'):
         raise ValueError('Unknown behavior graph mode')
+    if neighbor_score not in ('count', 'cosine'):
+        raise ValueError('neighbor_score must be count or cosine')
     if edge_weight not in ('binary', 'count') or not isinstance(self_loop, bool):
         raise ValueError('Invalid edge_weight or self_loop')
     if isinstance(graph_seed, bool) or not isinstance(graph_seed, Integral) or graph_seed < 0:
         raise ValueError('graph_seed must be a non-negative integer')
     interactions = _canonical_interactions(interaction_matrix)
     n_items = interactions.shape[1]
+    item_degree = (np.asarray(interactions.sum(axis=0)).ravel().astype(np.float64)
+                   if neighbor_score == 'cosine' else None)
     if graph_mode == 'identity':
         # Same encoder and residual path, without inter-item propagation.
         if not self_loop:
@@ -111,8 +119,12 @@ def build_structural_adjacency(interaction_matrix, *, topk, minimum,
         eligible = (counts >= minimum) & (candidates != item)
         candidates, counts = candidates[eligible], counts[eligible]
         if candidates.size:
-            # Descending count with item id as a deterministic tie-breaker.
-            order = np.lexsort((candidates, -counts))[:topk]
+            # Eligibility still uses distinct TRAIN co-users. Only ranking changes;
+            # edge weights and propagation retain their original semantics.
+            scores = counts
+            if neighbor_score == 'cosine':
+                scores = counts / np.sqrt(item_degree[item] * item_degree[candidates])
+            order = np.lexsort((candidates, -scores))[:topk]
             selected = candidates[order]
             rows.extend([item] * len(selected))
             columns.extend(selected.tolist())
@@ -146,12 +158,13 @@ class MSCABehaviorView(nn.Module):
     def __init__(self, interaction_matrix, device, *,
                  topk=MSCA_STRUCT_TOPK,
                  minimum=MSCA_MIN_COOCCURRENCE, graph_mode='cooccurrence',
-                 graph_seed=0, self_loop=True, edge_weight='binary', block_size=1024):
+                 graph_seed=0, self_loop=True, edge_weight='binary', block_size=1024,
+                 neighbor_score='count'):
         super().__init__()
         self.topk = topk
         self.minimum = minimum
         options = dict(graph_mode=graph_mode, graph_seed=graph_seed,
-                       self_loop=self_loop, edge_weight=edge_weight)
+                       self_loop=self_loop, edge_weight=edge_weight, neighbor_score=neighbor_score)
         self.cache_fingerprint = behavior_graph_fingerprint(
             interaction_matrix, topk=self.topk, minimum=self.minimum, **options
         )

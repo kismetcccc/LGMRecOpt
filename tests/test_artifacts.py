@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
     ('off', 0, 0, 'cooccurrence'), ('msca_struct', 0, 0, 'cooccurrence'),
     ('msca_struct', .2, 0, 'cooccurrence'), ('msca_struct', 0, .5, 'cooccurrence'),
     ('msca_struct', 0, 0, 'identity'),
+    ('msca_struct', 0, 0, 'cosine'),
 ])
 def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hyper_weight, degree_power, graph):
     data = tmp_path / 'data' / 'baby'
@@ -29,7 +30,8 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hy
                '--set', 'topk=[1,2]', '--set', 'valid_metric=Recall@2',
                '--set', 'save_recommended_topk=false',
                '--set', f'behavior_view_mode={behavior}',
-               '--set', f'behavior_graph_mode={graph}',
+               '--set', f'behavior_graph_mode={"cooccurrence" if graph == "cosine" else graph}',
+               '--set', f'behavior_neighbor_score={"cosine" if graph == "cosine" else "count"}',
                '--set', f'hyper_behavior_weight={hyper_weight}',
                '--set', f'hyper_degree_power={degree_power}',
                '--set', 'behavior_minimum=1']
@@ -49,7 +51,8 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hy
         assert status['hyper_behavior_graph'] is None
     if behavior == 'msca_struct':
         assert len(status['behavior_graph']['fingerprint']) == 64
-        assert status['behavior_graph']['graph_mode'] == graph
+        assert status['behavior_graph']['graph_mode'] == ('cooccurrence' if graph == 'cosine' else graph)
+        assert status['behavior_graph']['neighbor_score'] == ('cosine' if graph == 'cosine' else 'count')
     else:
         assert status['behavior_graph'] is None
     assert Path(status['checkpoint']).is_file()

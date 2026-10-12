@@ -19,6 +19,7 @@ behavior_graph_mode: cooccurrence
 behavior_graph_seed: 0
 behavior_self_loop: true
 behavior_edge_weight: binary
+behavior_neighbor_score: count  # cosine changes neighbor ranking only; opt-in.
 behavior_block_size: 1024
 # Experimental: 0 preserves the stage-one model exactly. Not a proven upgrade.
 hyper_behavior_weight: 0.0
