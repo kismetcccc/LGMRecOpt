@@ -67,6 +67,12 @@ def test_default_dry_run_and_legacy_ablations(tmp_path, monkeypatch, capsys):
     assert not root.exists()
 
 
+def test_collaborative_hcl_is_a_single_override():
+    module = script()
+    assert module.VARIANTS['B'] == ('LGMRecOpt', {})
+    assert module.VARIANTS['collab_hcl'] == ('LGMRecOpt', {'hcl_view': 'collaborative'})
+
+
 def test_v4_variants_keep_v3_disabled(tmp_path, monkeypatch, capsys):
     module = script()
     monkeypatch.setattr(sys, 'argv', arguments(tmp_path / 'v4') +

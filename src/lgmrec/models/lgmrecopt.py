@@ -11,7 +11,7 @@ from .smore_fusion import CrossModalSpectrumFusion
 from .behavior_hypergraph import BehaviorHypergraphRefiner
 from .balanced_hypergraph import BalancedHGNNLayer
 
-IMPLEMENTATION_VERSION = 'lgmrec-opt-balanced-hyper-v4'
+IMPLEMENTATION_VERSION = 'lgmrec-opt-collaborative-hcl-v5'
 FEAT_MOD_SCALE = 0.5
 SCORE_MODES = ('original', 'separate', 'cross')
 CROSS_BRANCH_PAIRS = (
@@ -179,6 +179,9 @@ class LGMRecOpt(LGMRec):
         self.lambda_hcl = self.cl_weight if value is None else float(value)
         if not math.isfinite(self.lambda_hcl) or self.lambda_hcl < 0:
             raise ValueError('lambda_hcl must be finite and non-negative')
+        self.hcl_view = config['hcl_view'] or 'cross_modal'
+        if self.hcl_view not in ('cross_modal', 'collaborative'):
+            raise ValueError('hcl_view must be cross_modal or collaborative')
         if self.v_feat is None or self.t_feat is None:
             raise ValueError('Both modality feature arrays are required')
         if not torch.isfinite(self.v_feat).all() or not torch.isfinite(self.t_feat).all():
@@ -437,6 +440,24 @@ class LGMRecOpt(LGMRec):
         finally:
             self.adj, self.norm_adj, self.num_inters = full_graph
 
+    def hypergraph_contrastive_loss(self, hyper, uid, positive):
+        uv, iv, ut, it = hyper
+        if self.hcl_view == 'cross_modal':
+            return (self.ssl_triple_loss(uv[uid], ut[uid], ut)
+                    + self.ssl_triple_loss(iv[positive], it[positive], it))
+        # Existing TRAIN-only CGE is the target, not the fused representation.
+        # Stop gradients through the target to avoid mutual chasing. HGNN still
+        # shares item IDs with CGE, so this is not an independent frozen teacher.
+        cu, ci = self._score_collaborative.detach().split(
+            [self.n_users, self.n_items], dim=0)
+        # Average modalities: retain two batch-summed user/item objectives,
+        # the original temperature, full candidate sets and existing weight.
+        return 0.5 * (
+            self.ssl_triple_loss(uv[uid], cu[uid], cu)
+            + self.ssl_triple_loss(ut[uid], cu[uid], cu)
+            + self.ssl_triple_loss(iv[positive], ci[positive], ci)
+            + self.ssl_triple_loss(it[positive], ci[positive], ci))
+
     def calculate_loss(self, interaction):
         if interaction.size(0) != 3:
             raise ValueError('Expected one TRAIN-only negative per positive')
@@ -463,9 +484,7 @@ class LGMRecOpt(LGMRec):
             user_branches, negative_branches, combined=(u, n)
         )
         bpr = -torch.mean(F.logsigmoid(positive_scores - negative_scores))
-        uv, iv, ut, it = hyper
-        hcl = (self.ssl_triple_loss(uv[uid], ut[uid], ut)
-               + self.ssl_triple_loss(iv[positive], it[positive], it))
+        hcl = self.hypergraph_contrastive_loss(hyper, uid, positive)
         reg = self.reg_weight * self.reg_loss(u, p, n)
         weighted = self.lambda_hcl * hcl
         align = None

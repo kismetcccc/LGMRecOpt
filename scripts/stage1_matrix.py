@@ -12,6 +12,7 @@ VARIANTS = {
     'edge10': ('LGMRecOpt', {'hyper_degree_power': 1.0, 'hyper_behavior_weight': 0.0}),
     'A': ('LGMRec', {}),
     'B': ('LGMRecOpt', {}),
+    'collab_hcl': ('LGMRecOpt', {'hcl_view': 'collaborative'}),
     'cosine': ('LGMRecOpt', {'behavior_neighbor_score': 'cosine'}),
     'item': ('LGMRecOpt', {'behavior_residual_target': 'item'}),
     'user': ('LGMRecOpt', {'behavior_residual_target': 'user'}),

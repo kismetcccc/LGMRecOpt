@@ -1,5 +1,5 @@
 # C0 by default. The v11 candidate is explicitly opt-in, not a proven upgrade.
-implementation_version: lgmrec-opt-balanced-hyper-v4
+implementation_version: lgmrec-opt-collaborative-hcl-v5
 feat_mod_mode: 'off'
 score_mode: original
 train_context: full
@@ -27,4 +27,5 @@ hyper_behavior_graph_mode: cooccurrence
 # Experimental hyperedge mass correction; 0 keeps original HGNN exactly.
 hyper_degree_power: 0.0
 lambda_hcl: null
+hcl_view: cross_modal  # collaborative replaces HCL views; experimental, no extra loss.
 ablation: null

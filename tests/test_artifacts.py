@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
     ('msca_struct', 0, 0, 'identity'),
     ('msca_struct', 0, 0, 'cosine'),
 ])
-def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hyper_weight, degree_power, graph):
+def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hyper_weight, degree_power, graph, hcl_view='cross_modal'):
     data = tmp_path / 'data' / 'baby'
     data.mkdir(parents=True)
     for name in ('image_feat.npy', 'text_feat.npy'):
@@ -34,6 +34,7 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hy
                '--set', f'behavior_neighbor_score={"cosine" if graph == "cosine" else "count"}',
                '--set', f'hyper_behavior_weight={hyper_weight}',
                '--set', f'hyper_degree_power={degree_power}',
+               '--set', f'hcl_view={hcl_view}',
                '--set', 'behavior_minimum=1']
     first = subprocess.run(command, capture_output=True)
     assert first.returncode == 0, first.stderr.decode(errors='replace')
@@ -44,6 +45,7 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hy
     assert status['effective_config']['behavior_view_mode'] == (False if behavior == 'off' else behavior)
     assert status['effective_config']['protocol'] == 'train_only'
     assert status['effective_config']['hyper_degree_power'] == degree_power
+    assert status['effective_config']['hcl_view'] == hcl_view
     if hyper_weight:
         assert status['hyper_behavior_graph']['weight'] == hyper_weight
         assert status['hyper_behavior_graph']['items_with_neighbors'] > 0
@@ -80,3 +82,8 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hy
     assert log_only_status['checkpoint'] is None
     assert not (log_only_run / 'checkpoints').exists()
     assert list((log_only_run / 'log').glob('*.log'))
+
+
+def test_collaborative_hcl_cli_artifacts(tmp_path):
+    test_cli_writes_result_and_refuses_existing_directory(
+        tmp_path, 'msca_struct', 0, 0, 'cooccurrence', hcl_view='collaborative')
