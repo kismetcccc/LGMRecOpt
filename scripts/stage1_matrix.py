@@ -13,6 +13,7 @@ VARIANTS = {
     'A': ('LGMRec', {}),
     'B': ('LGMRecOpt', {}),
     'collab_hcl': ('LGMRecOpt', {'hcl_view': 'collaborative'}),
+    'user_mean': ('LGMRecOpt', {'user_hyper_aggregation': 'mean'}),
     'cosine': ('LGMRecOpt', {'behavior_neighbor_score': 'cosine'}),
     'item': ('LGMRecOpt', {'behavior_residual_target': 'item'}),
     'user': ('LGMRecOpt', {'behavior_residual_target': 'user'}),

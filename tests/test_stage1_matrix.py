@@ -71,6 +71,7 @@ def test_collaborative_hcl_is_a_single_override():
     module = script()
     assert module.VARIANTS['B'] == ('LGMRecOpt', {})
     assert module.VARIANTS['collab_hcl'] == ('LGMRecOpt', {'hcl_view': 'collaborative'})
+    assert module.VARIANTS['user_mean'] == ('LGMRecOpt', {'user_hyper_aggregation': 'mean'})
 
 
 def test_v4_variants_keep_v3_disabled(tmp_path, monkeypatch, capsys):

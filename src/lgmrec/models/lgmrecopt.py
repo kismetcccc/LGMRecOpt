@@ -11,7 +11,7 @@ from .smore_fusion import CrossModalSpectrumFusion
 from .behavior_hypergraph import BehaviorHypergraphRefiner
 from .balanced_hypergraph import BalancedHGNNLayer
 
-IMPLEMENTATION_VERSION = 'lgmrec-opt-collaborative-hcl-v5'
+IMPLEMENTATION_VERSION = 'lgmrec-opt-user-hyper-mean-v6'
 FEAT_MOD_SCALE = 0.5
 SCORE_MODES = ('original', 'separate', 'cross')
 CROSS_BRANCH_PAIRS = (
@@ -27,6 +27,9 @@ class LGMRecOpt(LGMRec):
         if config['protocol'] != 'train_only':
             raise ValueError('Only train_only is supported')
         super().__init__(config, dataset)
+        self.user_hyper_aggregation = config['user_hyper_aggregation'] or 'sum'
+        if self.user_hyper_aggregation not in ('sum', 'mean'):
+            raise ValueError('user_hyper_aggregation must be sum or mean')
         self.hyper_degree_power = float(config['hyper_degree_power'])
         if not math.isfinite(self.hyper_degree_power) or not 0 <= self.hyper_degree_power <= 1:
             raise ValueError('hyper_degree_power must be finite and in [0, 1]')
@@ -200,6 +203,13 @@ class LGMRecOpt(LGMRec):
     def hyperedge_logits(self, features, projection):
         logits = super().hyperedge_logits(features, projection)
         return logits if self.hyper_behavior is None else self.hyper_behavior(logits)
+
+    def user_hyperedge_logits(self, item_logits):
+        logits = super().user_hyperedge_logits(item_logits)
+        if self.user_hyper_aggregation == 'mean':
+            # Same TRAIN-history averaging as MGE, before Gumbel/softmax.
+            logits = logits * self.num_inters[:self.n_users]
+        return logits
 
     def mge(self, str='v'):
         if self.feat_mod is None:

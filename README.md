@@ -1,5 +1,7 @@
 # LGMRec / LGMRecOpt
 
+最新：[协同 HCL 结果与 user_mean 候选](docs/COLLAB_HCL_RESULTS_USER_MEAN_PLAN.md)。HCL 替换基本持平；本轮从 B 出发，仅检验用户超边 logits 的历史均值聚合，效果尚未验证。
+
 2026-10-12：[2026 论文依据与协同 HCL 实验方案](docs/PAPER_GROUNDED_MODEL_AUDIT_20261012.md)。新增 `collab_hcl` 候选，仅替换已有 HCL 视图，不增加模型参数；默认保留 B 的原跨模态 HCL。效果待服务器同轮三种子验证，不继续参数搜索。
 
 基于 TRAIN-only 协议的多模态推荐研究代码。LGMRecOpt 直接继承 LGMRec，默认 C0；可选增强均需在匹配协议下验证，不预先声明稳定提升。
