@@ -32,7 +32,7 @@ class Config:
             raise ValueError('Only train_only is supported')
         if values['ablation'] not in (None, 'no_enhancement'):
             raise ValueError('Retired ablations live in references/legacy, not this runtime')
-        values['evaluation_version'] = 'full-ranking-train-only-v1'
+        values['evaluation_version'] = 'full-ranking-train-only-full-precision-v2'
         values['search_version'] = 'validation-only-grid-v1'
         values['valid_metric_bigger'] = values['valid_metric'].split('@')[0].lower() not in ('rmse', 'mae', 'logloss')
         seed = values['seed']

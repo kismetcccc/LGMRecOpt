@@ -11,7 +11,7 @@ from .smore_fusion import CrossModalSpectrumFusion
 from .behavior_hypergraph import BehaviorHypergraphRefiner
 from .balanced_hypergraph import BalancedHGNNLayer
 
-IMPLEMENTATION_VERSION = 'lgmrec-opt-user-hyper-mean-v6'
+IMPLEMENTATION_VERSION = 'lgmrec-opt-hyper-input-v7'
 FEAT_MOD_SCALE = 0.5
 SCORE_MODES = ('original', 'separate', 'cross')
 CROSS_BRANCH_PAIRS = (
@@ -27,6 +27,16 @@ class LGMRecOpt(LGMRec):
         if config['protocol'] != 'train_only':
             raise ValueError('Only train_only is supported')
         super().__init__(config, dataset)
+        self.hyper_input_norm = config['hyper_input_norm'] or 'off'
+        if self.hyper_input_norm not in ('off', 'l2', 'cosine', 'centered_l2'):
+            raise ValueError('hyper_input_norm must be off, l2, cosine, or centered_l2')
+        train_items = None
+        if self.hyper_input_norm == 'centered_l2':
+            train_items = torch.as_tensor(
+                self.interaction_matrix.getnnz(axis=0) > 0, device=self.device)
+            if not train_items.any():
+                raise ValueError('Centered hyperedge inputs require TRAIN items')
+        self.register_buffer('_hyper_train_items', train_items, persistent=False)
         self.user_hyper_aggregation = config['user_hyper_aggregation'] or 'sum'
         if self.user_hyper_aggregation not in ('sum', 'mean'):
             raise ValueError('user_hyper_aggregation must be sum or mean')
@@ -201,7 +211,16 @@ class LGMRecOpt(LGMRec):
         self.pre_epoch_processing()
 
     def hyperedge_logits(self, features, projection):
+        if self.hyper_input_norm != 'off':
+            features = F.normalize(features, dim=1)
+        if self.hyper_input_norm == 'cosine':
+            # Bound each item logit independently of feature/prototype magnitude.
+            projection = F.normalize(projection, dim=0)
         logits = super().hyperedge_logits(features, projection)
+        if self.hyper_input_norm == 'centered_l2':
+            # Remove the shared TRAIN-item direction, not a row-wise softmax
+            # constant. Keep the mean differentiable with respect to projection.
+            logits = logits - logits[self._hyper_train_items].mean(dim=0, keepdim=True)
         return logits if self.hyper_behavior is None else self.hyper_behavior(logits)
 
     def user_hyperedge_logits(self, item_logits):

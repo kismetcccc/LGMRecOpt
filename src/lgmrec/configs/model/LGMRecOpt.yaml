@@ -1,5 +1,5 @@
 # C0 by default. The v11 candidate is explicitly opt-in, not a proven upgrade.
-implementation_version: lgmrec-opt-user-hyper-mean-v6
+implementation_version: lgmrec-opt-hyper-input-v7
 feat_mod_mode: 'off'
 score_mode: original
 train_context: full
@@ -29,4 +29,5 @@ hyper_degree_power: 0.0
 lambda_hcl: null
 hcl_view: cross_modal  # collaborative replaces HCL views; experimental, no extra loss.
 user_hyper_aggregation: sum  # mean removes history-length scaling before assignment.
+hyper_input_norm: 'off'  # centered_l2 removes TRAIN common direction after input L2. MGE unchanged.
 ablation: null

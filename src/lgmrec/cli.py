@@ -63,9 +63,10 @@ def main():
         options['feat_mod_mode'] = 'off' if args.variant == 'c0' else 'id_cond'
     from lgmrec.utils.configurator import Config
     from lgmrec.utils.quick_start import quick_start
+    from lgmrec.utils.experiment_state import runtime_metadata
     # Reject misspelled/retired options before making an output directory.
     try:
-        Config(args.model, args.dataset, options)
+        checked_config = Config(args.model, args.dataset, options)
     except ValueError as exc:
         parser.error(str(exc))
     try:
@@ -76,6 +77,7 @@ def main():
                   seed=args.seed, variant=args.variant, options=options,
                   checkpoint_enabled=not args.no_checkpoint,
                   started_at=datetime.now().isoformat(), finished=False)
+    status['runtime'] = runtime_metadata(checked_config['device'])
     def save_status():
         temp = run / 'status.json.tmp'
         temp.write_text(json.dumps(status, indent=2, ensure_ascii=False), encoding='utf-8')

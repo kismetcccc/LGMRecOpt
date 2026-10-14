@@ -164,9 +164,10 @@ class Trainer(AbstractTrainer):
             else:
                 loss = losses
                 total_loss = losses.item() if total_loss is None else total_loss + losses.item()
-            if self._check_nan(loss):
-                self.logger.info('Loss is nan at epoch: {}, batch index: {}. Exiting.'.format(epoch_idx, batch_idx))
-                return loss, torch.tensor(0.0)
+            if not torch.isfinite(loss).all():
+                raise FloatingPointError(
+                    'Non-finite loss at epoch {}, batch {}'.format(epoch_idx, batch_idx)
+                )
             loss.backward()
             if self.clip_grad_norm:
                 clip_grad_norm_(self.model.parameters(), **self.clip_grad_norm)
@@ -190,11 +191,6 @@ class Trainer(AbstractTrainer):
         valid_result = self.evaluate(valid_data)
         valid_score = valid_result[self.valid_metric] if self.valid_metric else valid_result['NDCG@20']
         return valid_score, valid_result
-
-    def _check_nan(self, loss):
-        if torch.isnan(loss):
-            #raise ValueError('Training loss is nan')
-            return True
 
     def _generate_train_loss_output(self, epoch_idx, s_time, e_time, losses):
         train_loss_output = 'epoch %d training [time: %.2fs, ' % (epoch_idx, e_time - s_time)
@@ -225,9 +221,6 @@ class Trainer(AbstractTrainer):
             training_start_time = time()
             self.model.pre_epoch_processing()
             train_loss, _ = self._train_epoch(train_data, epoch_idx)
-            if torch.is_tensor(train_loss):
-                # get nan loss
-                break
             #for param_group in self.optimizer.param_groups:
             #    print('======lr: ', param_group['lr'])
             self.lr_scheduler.step()
@@ -248,6 +241,8 @@ class Trainer(AbstractTrainer):
             if should_evaluate:
                 valid_start_time = time()
                 valid_score, valid_result = self._valid_epoch(valid_data)
+                if not np.isfinite(valid_score):
+                    raise FloatingPointError('Non-finite validation score at epoch {}'.format(epoch_idx))
                 self.best_valid_score, self.cur_step, stop_flag, update_flag = early_stopping(
                     valid_score, self.best_valid_score, self.cur_step,
                     max_step=self.stopping_step, bigger=self.valid_metric_bigger)
@@ -268,6 +263,10 @@ class Trainer(AbstractTrainer):
                         name: value.detach().cpu().clone()
                         for name, value in self.model.state_dict().items()
                     }
+                    self.best_model_state = best_model_state
+                    self.best_epoch_idx = best_epoch_idx
+                    if saved:
+                        self._save_checkpoint(best_model_state, best_epoch_idx)
 
                 if stop_flag:
                     break
@@ -288,7 +287,8 @@ class Trainer(AbstractTrainer):
                         'selected checkpoint test result: \n'
                         + dict2str(self.best_test_upon_valid)
                     )
-            if saved:
+            if saved and test_data is not None:
+                # Add the final TEST result to the already durable VALID state.
                 self._save_checkpoint(best_model_state, best_epoch_idx)
         return self.best_valid_score, self.best_valid_result, self.best_test_upon_valid
 
@@ -307,10 +307,11 @@ class Trainer(AbstractTrainer):
         )
         from uuid import uuid4
         filename = filename[:-4] + '-' + uuid4().hex[:8] + '.pth'
-        self.saved_model_file = os.path.join(checkpoint_dir, filename)
+        # One unique file per Trainer/run, updated only after a VALID improvement.
+        # Older runs remain untouched and interruption keeps the last complete save.
+        checkpoint_file = self.saved_model_file or os.path.join(checkpoint_dir, filename)
         effective_config = dict(getattr(self.config, 'final_config_dict', self.config))
-        torch.save(
-            _checkpoint_safe_values({
+        checkpoint = _checkpoint_safe_values({
                 'model_state_dict': model_state,
                 'epoch': epoch_idx,
                 'best_valid_score': self.best_valid_score,
@@ -327,9 +328,18 @@ class Trainer(AbstractTrainer):
                     'implementation_version'
                 ],
                 'ablation': self.config['ablation'],
-            }),
-            self.saved_model_file,
-        )
+            })
+        temporary_file = checkpoint_file + '.' + uuid4().hex + '.tmp'
+        try:
+            with open(temporary_file, 'xb') as handle:
+                torch.save(checkpoint, handle)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_file, checkpoint_file)
+        finally:
+            if os.path.exists(temporary_file):
+                os.remove(temporary_file)
+        self.saved_model_file = checkpoint_file
         self.logger.info('Saved checkpoint: ' + self.saved_model_file)
 
 

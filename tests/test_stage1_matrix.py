@@ -72,6 +72,40 @@ def test_collaborative_hcl_is_a_single_override():
     assert module.VARIANTS['B'] == ('LGMRecOpt', {})
     assert module.VARIANTS['collab_hcl'] == ('LGMRecOpt', {'hcl_view': 'collaborative'})
     assert module.VARIANTS['user_mean'] == ('LGMRecOpt', {'user_hyper_aggregation': 'mean'})
+    assert module.VARIANTS['hyper_l2'] == ('LGMRecOpt', {'hyper_input_norm': 'l2'})
+    assert module.VARIANTS['hyper_cosine'] == ('LGMRecOpt', {'hyper_input_norm': 'cosine'})
+    assert module.VARIANTS['hyper_centered'] == ('LGMRecOpt', {'hyper_input_norm': 'centered_l2'})
+
+
+@pytest.mark.parametrize('names, count', [(['B', 'hyper_centered'], 4), (['A', 'B'], 3)])
+def test_audit_uses_each_completed_opt_run_checkpoint(tmp_path, monkeypatch, names, count):
+    module = script()
+    root = tmp_path / 'matrix'
+    monkeypatch.setattr(sys, 'argv', arguments(root) + [
+        '--variants', *names, '--seeds', '999', '--execute', '--audit'])
+    calls = []
+
+    def run(command, **kwargs):
+        assert kwargs['check'] is True
+        calls.append(command)
+        if '--run-dir' in command:
+            directory = Path(command[command.index('--run-dir') + 1])
+            directory.mkdir()
+            (directory / 'status.json').write_text(json.dumps({
+                'checkpoint': str(directory / 'best.pth')}), encoding='utf-8')
+        else:
+            status = Path(command[command.index('--status') + 1])
+            assert not status.parent.name.startswith('A-')
+            assert status.exists()
+            assert command[command.index('--checkpoint') + 1] == str(status.parent / 'best.pth')
+            assert command[command.index('--output') + 1] == str(status.parent / 'train_audit.json')
+
+    monkeypatch.setattr(module.subprocess, 'run', run)
+    module.main()
+    assert len(calls) == count
+    manifest = json.loads((root / 'manifest.json').read_text())
+    assert manifest['train_audit'] is True
+    assert manifest['train_audit_models'] == ['LGMRecOpt']
 
 
 def test_v4_variants_keep_v3_disabled(tmp_path, monkeypatch, capsys):

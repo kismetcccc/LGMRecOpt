@@ -42,6 +42,10 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hy
     status_bytes = (run/'status.json').read_bytes()
     status = json.loads(status_bytes)
     assert status['finished'] and not status['test_evaluated']
+    assert len(status['runtime']['source_sha256']) == 64
+    assert status['runtime']['torch'] and status['runtime']['python']
+    assert status['runtime']['used_device'] == 'cpu'
+    assert status['runtime']['used_gpu'] is None
     # YAML 1.1 parses an unquoted CLI 'off' as False; the model accepts both.
     assert status['effective_config']['behavior_view_mode'] == (False if behavior == 'off' else behavior)
     assert status['effective_config']['protocol'] == 'train_only'

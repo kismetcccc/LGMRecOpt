@@ -14,6 +14,9 @@ VARIANTS = {
     'B': ('LGMRecOpt', {}),
     'collab_hcl': ('LGMRecOpt', {'hcl_view': 'collaborative'}),
     'user_mean': ('LGMRecOpt', {'user_hyper_aggregation': 'mean'}),
+    'hyper_l2': ('LGMRecOpt', {'hyper_input_norm': 'l2'}),
+    'hyper_cosine': ('LGMRecOpt', {'hyper_input_norm': 'cosine'}),
+    'hyper_centered': ('LGMRecOpt', {'hyper_input_norm': 'centered_l2'}),
     'cosine': ('LGMRecOpt', {'behavior_neighbor_score': 'cosine'}),
     'item': ('LGMRecOpt', {'behavior_residual_target': 'item'}),
     'user': ('LGMRecOpt', {'behavior_residual_target': 'user'}),
@@ -52,6 +55,8 @@ def main():
     selection.add_argument('--variants', nargs='+', choices=list(VARIANTS),
                            help='Run only these variants; default A B')
     p.add_argument('--execute', action='store_true', help='Default only prints commands')
+    p.add_argument('--audit', action='store_true',
+                   help='Export TRAIN-only LGMRecOpt diagnostics after each run; skip baseline A')
     a = p.parse_args()
     if len(set(a.seeds)) != len(a.seeds):
         p.error('Seeds must be unique')
@@ -87,9 +92,24 @@ def main():
         a.output.mkdir(parents=True, exist_ok=False)
         with (a.output / 'manifest.json').open('x', encoding='utf-8') as f:
             json.dump(dict(protocol='train_only', report_test=False,
-                           variants=names, seeds=a.seeds, commands=commands), f, indent=2)
+                           variants=names, seeds=a.seeds, commands=commands,
+                           train_audit=a.audit,
+                           train_audit_models=['LGMRecOpt'] if a.audit else []), f, indent=2)
         for cmd in commands:
             subprocess.run(cmd, check=True)
+            if a.audit:
+                if cmd[cmd.index('-m') + 1] != 'LGMRecOpt':
+                    print('TRAIN audit skipped for baseline A (LGMRec); continuing matrix.', flush=True)
+                    continue
+                run = Path(cmd[cmd.index('--run-dir') + 1])
+                status_path = run / 'status.json'
+                status = json.loads(status_path.read_text(encoding='utf-8'))
+                subprocess.run([
+                    sys.executable, '-B', str(train.with_name('audit_model.py')),
+                    '--checkpoint', status['checkpoint'], '--status', str(status_path),
+                    '--output', str(run / 'train_audit.json'),
+                    '--data-dir', str(a.data_dir.resolve()),
+                ], check=True)
 
 
 if __name__ == '__main__':
