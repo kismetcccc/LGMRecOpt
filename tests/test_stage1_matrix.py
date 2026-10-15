@@ -75,6 +75,10 @@ def test_collaborative_hcl_is_a_single_override():
     assert module.VARIANTS['hyper_l2'] == ('LGMRecOpt', {'hyper_input_norm': 'l2'})
     assert module.VARIANTS['hyper_cosine'] == ('LGMRecOpt', {'hyper_input_norm': 'cosine'})
     assert module.VARIANTS['hyper_centered'] == ('LGMRecOpt', {'hyper_input_norm': 'centered_l2'})
+    assert module.VARIANTS['centered_nohcl'] == ('LGMRecOpt', {'hyper_input_norm': 'centered_l2', 'lambda_hcl': 0.0})
+    assert module.VARIANTS['sparse_hyper'] == ('LGMRecOpt', {'hypergraph_mode': 'sparse_group'})
+    assert module.VARIANTS['sparse_nohcl'] == ('LGMRecOpt', {'hypergraph_mode': 'sparse_group', 'lambda_hcl': 0.0})
+    assert module.VARIANTS['sparse_uniform'] == ('LGMRecOpt', {'hypergraph_mode': 'sparse_group', 'hyper_group_weighting': 'uniform'})
 
 
 @pytest.mark.parametrize('names, count', [(['B', 'hyper_centered'], 4), (['A', 'B'], 3)])

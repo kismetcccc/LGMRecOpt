@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
     ('msca_struct', 0, 0, 'identity'),
     ('msca_struct', 0, 0, 'cosine'),
 ])
-def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hyper_weight, degree_power, graph, hcl_view='cross_modal', user_hyper_aggregation='sum'):
+def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hyper_weight, degree_power, graph, hcl_view='cross_modal', user_hyper_aggregation='sum', hypergraph_mode='prototype'):
     data = tmp_path / 'data' / 'baby'
     data.mkdir(parents=True)
     for name in ('image_feat.npy', 'text_feat.npy'):
@@ -36,6 +36,7 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hy
                '--set', f'hyper_degree_power={degree_power}',
                '--set', f'hcl_view={hcl_view}',
                '--set', f'user_hyper_aggregation={user_hyper_aggregation}',
+               '--set', f'hypergraph_mode={hypergraph_mode}',
                '--set', 'behavior_minimum=1']
     first = subprocess.run(command, capture_output=True)
     assert first.returncode == 0, first.stderr.decode(errors='replace')
@@ -52,6 +53,13 @@ def test_cli_writes_result_and_refuses_existing_directory(tmp_path, behavior, hy
     assert status['effective_config']['hyper_degree_power'] == degree_power
     assert status['effective_config']['hcl_view'] == hcl_view
     assert status['effective_config']['user_hyper_aggregation'] == user_hyper_aggregation
+    if hypergraph_mode == 'sparse_group':
+        assert status['sparse_hypergraph']['n_hyperedges'] == 6
+        assert status['sparse_hypergraph']['train_graph_fingerprint'] == status['behavior_graph']['fingerprint']
+        assert status['sparse_hypergraph']['routing'] == 'deterministic'
+        assert status['sparse_hypergraph']['user_aggregation'] == 'train_mean'
+    else:
+        assert status['sparse_hypergraph'] is None
     if hyper_weight:
         assert status['hyper_behavior_graph']['weight'] == hyper_weight
         assert status['hyper_behavior_graph']['items_with_neighbors'] > 0
@@ -98,3 +106,8 @@ def test_collaborative_hcl_cli_artifacts(tmp_path):
 def test_user_mean_cli_artifacts(tmp_path):
     test_cli_writes_result_and_refuses_existing_directory(
         tmp_path, 'msca_struct', 0, 0, 'cooccurrence', user_hyper_aggregation='mean')
+
+
+def test_sparse_group_cli_artifacts(tmp_path):
+    test_cli_writes_result_and_refuses_existing_directory(
+        tmp_path, 'msca_struct', 0, 0, 'cooccurrence', hypergraph_mode='sparse_group')

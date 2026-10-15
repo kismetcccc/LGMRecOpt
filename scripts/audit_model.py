@@ -61,6 +61,15 @@ def validate_source(checkpoint, status, path):
             raise ValueError(f'Invalid checkpoint tensor: {key}')
 
 
+def sparse_structure_metadata(model, status):
+    """Check the TRAIN-rebuilt, non-persistent structure against recorded evidence."""
+    layer = getattr(model, 'sparse_hypergraph', None)
+    actual = dict(layer.metadata) if layer is not None else None
+    if 'sparse_hypergraph' in status and status['sparse_hypergraph'] != actual:
+        raise ValueError('Source sparse hypergraph metadata mismatch')
+    return actual
+
+
 def load_source(checkpoint_path, status_path, data_dir, use_gpu=False):
     checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
     status = json.loads(Path(status_path).read_text(encoding='utf-8'))
@@ -100,6 +109,7 @@ def load_source(checkpoint_path, status_path, data_dir, use_gpu=False):
         if not torch.equal(model.state_dict()[key].cpu(), state[key]):
             raise ValueError(f'Frozen features differ from source data: {key}')
     model.load_state_dict(state, strict=True)
+    sparse_metadata = sparse_structure_metadata(model, status)
     provenance = {
         'checkpoint': str(Path(checkpoint_path).resolve()),
         'checkpoint_sha256': sha256(checkpoint_path),
@@ -113,6 +123,8 @@ def load_source(checkpoint_path, status_path, data_dir, use_gpu=False):
                             ('learning_rate', 'train_batch_size', 'weight_decay')},
         'compatibility_defaults': {k: v for k, v in defaults.items() if k not in saved},
     }
+    if sparse_metadata is not None:
+        provenance['sparse_hypergraph'] = sparse_metadata
     return model, train, provenance
 
 
@@ -122,14 +134,93 @@ def quantiles(values):
     return dict(zip(('min', 'median', 'p90', 'p99', 'max'), result))
 
 
+def _within_edge_summary(weights, counts):
+    """Exclude padding; expose singleton and multi-member statistics separately."""
+    if weights.shape[0] == 0:
+        return None
+    entropy = -(weights * weights.clamp_min(1e-30).log()).sum(1)
+    uniform_entropy = counts.float().log()
+    return {
+        'n_hyperedges': weights.shape[0],
+        'entropy': quantiles(entropy),
+        'entropy_mean': float(entropy.mean()),
+        'max_weight': quantiles(weights.max(1).values),
+        'max_weight_mean': float(weights.max(1).values.mean()),
+        'uniform_entropy_mean': float(uniform_entropy.mean()),
+        'uniform_max_weight_mean': float(counts.float().reciprocal().mean()),
+        # Singletons have no selection uncertainty, so 0/log(1) is undefined.
+        'normalized_entropy_mean': (float((entropy / uniform_entropy).mean())
+                                    if (counts > 1).all() else None),
+    }
+
+
+@torch.no_grad()
+def sparse_assignment_diagnostics(model, seed=731):
+    """Inspect actual sparse incidence weights; no prototype/Gumbel sampling."""
+    layer = model.sparse_hypergraph
+    mask = layer.mask
+    counts = mask.sum(1)
+    if mask.shape != layer.members.shape or not (counts > 0).all():
+        raise ValueError('Sparse hyperedges must have a nonempty, matching member mask')
+    device = layer.members.device
+    devices = [device.index or 0] if device.type == 'cuda' else []
+    modes = [(module, module.training) for module in model.modules()]
+    report = {
+        'kind': 'sparse_group', 'monte_carlo_draws': 0,
+        'sampling': 'Deterministic incidence weights; Gumbel sampling is not applicable.',
+        'structure': {
+            'metadata': dict(layer.metadata),
+            'n_hyperedges': mask.shape[0], 'nnz': int(mask.sum()),
+            'singleton_hyperedges': int((counts == 1).sum()),
+            'member_count': quantiles(counts),
+        },
+    }
+    try:
+        with torch.random.fork_rng(devices=devices):
+            torch.manual_seed(seed)
+            model.eval()
+            items = model.cge()[model.n_users:]
+            uniform = mask.to(items.dtype) / counts[:, None]
+            for modality, features, projection in (
+                ('visual', model.image_embedding.weight, model.item_image_trs),
+                ('text', model.text_embedding.weight, model.item_text_trs),
+            ):
+                projected = features @ projection
+                model.eval()
+                evaluation = layer.weights(items, projected)
+                model.train()
+                training = layer.weights(items, projected)
+                if (evaluation.shape != mask.shape or training.shape != mask.shape
+                        or not torch.isfinite(evaluation).all() or not torch.isfinite(training).all()
+                        or (evaluation < 0).any() or (training < 0).any()):
+                    raise ValueError('Invalid sparse hypergraph weights')
+                report[modality] = {
+                    'feature_norm': quantiles(features.norm(dim=1)),
+                    'projected_feature_norm': quantiles(projected.norm(dim=1)),
+                    'all_hyperedges': _within_edge_summary(evaluation, counts),
+                    'non_singleton_hyperedges': _within_edge_summary(evaluation[counts > 1], counts[counts > 1]),
+                    'eval_l1_from_uniform_mean': float((evaluation - uniform).abs().sum(1).mean()),
+                    'eval_padding_weight_sum': float(evaluation[~mask].abs().sum()),
+                    'eval_row_sum_max_error': float((evaluation.sum(1) - 1).abs().max()),
+                    'train_eval_max_abs_difference': float((training - evaluation).abs().max()),
+                    'train_eval_l1_mean': float((training - evaluation).abs().sum(1).mean()),
+                }
+    finally:
+        for module, training in modes:
+            module.training = training
+    return report
+
+
 @torch.no_grad()
 def assignment_diagnostics(model, draws=128, seed=731):
+    if getattr(model, 'hypergraph_mode', 'prototype') == 'sparse_group':
+        return sparse_assignment_diagnostics(model, seed=seed)
     if draws < 2:
         raise ValueError('draws must be at least 2')
     device = model.v_hyper.device
     devices = [device.index or 0] if device.type == 'cuda' else []
-    was_training = model.training
-    report = {}
+    modes = [(module, module.training) for module in model.modules()]
+    report = {'kind': 'prototype', 'monte_carlo_draws': draws}
     try:
         with torch.random.fork_rng(devices=devices):
             torch.manual_seed(seed)
@@ -170,7 +261,8 @@ def assignment_diagnostics(model, draws=128, seed=731):
                         'train_post_dropout_exact_zero_row_fraction': zero_rows / draws,
                     }
     finally:
-        model.train(was_training)
+        for module, training in modes:
+            module.training = training
     return report
 
 
@@ -200,7 +292,7 @@ def gradient_diagnostics(model, train, batch_size, repeats=3, seed=731):
     named = [(name, value) for name, value in model.named_parameters() if value.requires_grad]
     parameters = [value for _, value in named]
     output = []
-    was_training = model.training
+    modes = [(module, module.training) for module in model.modules()]
     try:
         model.train()
         with torch.random.fork_rng(devices=devices):
@@ -225,7 +317,8 @@ def gradient_diagnostics(model, train, batch_size, repeats=3, seed=731):
                 output.append({'repeat': repeat, 'loss_bpr': float(bpr.detach()),
                                'loss_hcl_weighted': float(hcl.detach()), 'parameters': gradients})
     finally:
-        model.train(was_training)
+        for module, training in modes:
+            module.training = training
     return {'fixed_train_batch_size': batch_size, 'seed': seed, 'repeats': output}
 
 
@@ -245,11 +338,12 @@ def main():
         parser.error('--gradient-repeats must be positive')
     torch.set_num_threads(2)
     model, train, source = load_source(args.checkpoint, args.status, args.data_dir, args.gpu)
+    assignments = assignment_diagnostics(model, draws=args.draws)
     result = {
         'source': source, 'test_evaluated': False, 'ranking_evaluated': False,
         'interpretation': 'Frozen source-checkpoint TRAIN diagnostics; not proof of a performance defect or improvement.',
-        'monte_carlo_draws': args.draws,
-        'assignments': assignment_diagnostics(model, draws=args.draws),
+        'monte_carlo_draws': assignments['monte_carlo_draws'],
+        'assignments': assignments,
         'gradients': gradient_diagnostics(model, train, source['source_training']['train_batch_size'],
                                           repeats=args.gradient_repeats),
     }

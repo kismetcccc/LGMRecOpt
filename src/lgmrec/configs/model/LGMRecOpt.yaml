@@ -1,5 +1,5 @@
 # C0 by default. The v11 candidate is explicitly opt-in, not a proven upgrade.
-implementation_version: lgmrec-opt-hyper-input-v7
+implementation_version: lgmrec-opt-sparse-group-v8
 feat_mod_mode: 'off'
 score_mode: original
 train_context: full
@@ -28,6 +28,8 @@ hyper_behavior_graph_mode: cooccurrence
 hyper_degree_power: 0.0
 lambda_hcl: null
 hcl_view: cross_modal  # collaborative replaces HCL views; experimental, no extra loss.
-user_hyper_aggregation: sum  # mean removes history-length scaling before assignment.
+user_hyper_aggregation: sum  # Prototype-only; sparse_group uses TRAIN mean of propagated items.
 hyper_input_norm: 'off'  # centered_l2 removes TRAIN common direction after input L2. MGE unchanged.
+hypergraph_mode: prototype  # sparse_group replaces GHE with TRAIN group hyperedges.
+hyper_group_weighting: attention  # uniform is the same-support aggregation control.
 ablation: null

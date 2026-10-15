@@ -108,12 +108,16 @@ class LGMRec(GeneralRecommender):
             cge_embs = cge_embs.mean(dim=1, keepdim=False)
         return cge_embs
     
+    def _project_modal_items(self, modality):
+        if modality == 'v':
+            return torch.mm(self.image_embedding.weight, self.item_image_trs)
+        if modality == 't':
+            return torch.mm(self.text_embedding.weight, self.item_text_trs)
+        raise ValueError('Expected v or t')
+
     # modality graph embedding
     def mge(self, str='v'):
-        if str == 'v':
-            item_feats = torch.mm(self.image_embedding.weight, self.item_image_trs)
-        elif str == 't':
-            item_feats = torch.mm(self.text_embedding.weight, self.item_text_trs)
+        item_feats = self._project_modal_items(str)
         user_feats = torch.sparse.mm(self.adj, item_feats) * self.num_inters[:self.n_users]
         # user_feats = self.user_embedding.weight
         mge_feats = torch.concat([user_feats, item_feats], dim=0)
@@ -158,8 +162,9 @@ class LGMRec(GeneralRecommender):
     def user_hyperedge_logits(self, item_logits):
         return torch.mm(self.adj, item_logits)
     
-    def forward(self):
-        # hyperedge dependencies constructing
+    def _hypergraph_assignments(self):
+        """Construct the original routing before CGE/MGE; preserve RNG order."""
+        iv_hyper = uv_hyper = it_hyper = ut_hyper = None
         if self.v_feat is not None:
             iv_hyper = self.hyperedge_logits(self.image_embedding.weight, self.v_hyper)
             uv_hyper = self.user_hyperedge_logits(iv_hyper)
@@ -170,7 +175,16 @@ class LGMRec(GeneralRecommender):
             ut_hyper = self.user_hyperedge_logits(it_hyper)
             it_hyper = self._hyperedge_distribution(it_hyper)
             ut_hyper = self._hyperedge_distribution(ut_hyper)
-        
+        return iv_hyper, uv_hyper, it_hyper, ut_hyper
+
+    def _hypergraph_embeddings(self, assignments, collaborative_items):
+        iv_hyper, uv_hyper, it_hyper, ut_hyper = assignments
+        uv, iv = self.hgnnLayer(self.drop(iv_hyper), self.drop(uv_hyper), collaborative_items)
+        ut, it = self.hgnnLayer(self.drop(it_hyper), self.drop(ut_hyper), collaborative_items)
+        return [uv, iv, ut, it]
+
+    def forward(self):
+        assignments = self._hypergraph_assignments()
         # CGE: collaborative graph embedding
         cge_embs = self.cge()
         
@@ -182,8 +196,8 @@ class LGMRec(GeneralRecommender):
             mge_embs = self.fuse_modal_embeddings(v_feats, t_feats)
             lge_embs = cge_embs + mge_embs
             # GHE: global hypergraph embedding
-            uv_hyper_embs, iv_hyper_embs = self.hgnnLayer(self.drop(iv_hyper), self.drop(uv_hyper), cge_embs[self.n_users:])
-            ut_hyper_embs, it_hyper_embs = self.hgnnLayer(self.drop(it_hyper), self.drop(ut_hyper), cge_embs[self.n_users:])
+            uv_hyper_embs, iv_hyper_embs, ut_hyper_embs, it_hyper_embs = self._hypergraph_embeddings(
+                assignments, cge_embs[self.n_users:])
             av_hyper_embs = torch.concat([uv_hyper_embs, iv_hyper_embs], dim=0)
             at_hyper_embs = torch.concat([ut_hyper_embs, it_hyper_embs], dim=0)
             ghe_embs = self.fuse_hyper_embeddings(

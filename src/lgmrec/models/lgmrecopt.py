@@ -10,8 +10,9 @@ from .msca_behavior import MSCABehaviorView
 from .smore_fusion import CrossModalSpectrumFusion
 from .behavior_hypergraph import BehaviorHypergraphRefiner
 from .balanced_hypergraph import BalancedHGNNLayer
+from .sparse_hypergraph import SparseGroupHypergraph
 
-IMPLEMENTATION_VERSION = 'lgmrec-opt-hyper-input-v7'
+IMPLEMENTATION_VERSION = 'lgmrec-opt-sparse-group-v8'
 FEAT_MOD_SCALE = 0.5
 SCORE_MODES = ('original', 'separate', 'cross')
 CROSS_BRANCH_PAIRS = (
@@ -199,6 +200,37 @@ class LGMRecOpt(LGMRec):
             raise ValueError('Both modality feature arrays are required')
         if not torch.isfinite(self.v_feat).all() or not torch.isfinite(self.t_feat).all():
             raise ValueError('Features must be finite')
+        self.hypergraph_mode = config['hypergraph_mode'] or 'prototype'
+        if self.hypergraph_mode not in ('prototype', 'sparse_group'):
+            raise ValueError('hypergraph_mode must be prototype or sparse_group')
+        weighting = config['hyper_group_weighting'] or 'attention'
+        if weighting not in ('attention', 'uniform'):
+            raise ValueError('hyper_group_weighting must be attention or uniform')
+        if self.hypergraph_mode == 'prototype' and weighting != 'attention':
+            raise ValueError('hyper_group_weighting=uniform requires sparse_group')
+        self.sparse_hypergraph = None
+        self._hyper_modal_items = {}
+        if self.hypergraph_mode == 'sparse_group':
+            if (self.behavior_view is None or config['behavior_graph_mode'] != 'cooccurrence'
+                    or config['behavior_neighbor_score'] != 'count'
+                    or config['behavior_edge_weight'] != 'binary'
+                    or not config['behavior_self_loop']):
+                raise ValueError('sparse_group requires the real count/binary/self-loop behavior graph')
+            if (self.hyper_input_norm != 'off' or self.user_hyper_aggregation != 'sum'
+                    or self.hyper_behavior_weight != 0 or self.hyper_degree_power != 0):
+                raise ValueError('sparse_group replaces prototype routing; disable its other refinements')
+            if self.n_hyper_layer < 1 or self.alpha <= 0:
+                raise ValueError('sparse_group requires active hypergraph propagation')
+            self.sparse_hypergraph = SparseGroupHypergraph(
+                self.behavior_view.structural_adjacency,
+                weighting=weighting, layers=self.n_hyper_layer)
+            self.sparse_hypergraph.metadata.update(
+                train_graph_fingerprint=self.behavior_view.cache_fingerprint,
+                user_aggregation='train_mean', routing='deterministic', incidence_dropout=False)
+            # Keep legacy state keys and initialization RNG for checkpoint/control
+            # compatibility; these prototype matrices do not participate in GHE.
+            self.v_hyper.requires_grad_(False)
+            self.t_hyper.requires_grad_(False)
         self.feat_mod = None
         if self.feat_mod_mode == 'id_cond':
             with torch.random.fork_rng(devices=[]):
@@ -209,6 +241,27 @@ class LGMRecOpt(LGMRec):
                 nn.init.zeros_(layer.bias)
             self.feat_mod = nn.ModuleDict(layers)
         self.pre_epoch_processing()
+
+    def _project_modal_items(self, modality):
+        items = super()._project_modal_items(modality)
+        if self.sparse_hypergraph is not None:
+            self._hyper_modal_items[modality] = items
+        return items
+
+    def _hypergraph_assignments(self):
+        if self.sparse_hypergraph is not None:
+            return None
+        return super()._hypergraph_assignments()
+
+    def _hypergraph_embeddings(self, assignments, collaborative_items):
+        if self.sparse_hypergraph is None:
+            return super()._hypergraph_embeddings(assignments, collaborative_items)
+        result = []
+        for modality in ('v', 't'):
+            items = self.sparse_hypergraph(collaborative_items, self._hyper_modal_items[modality])
+            users = torch.sparse.mm(self.adj, items) * self.num_inters[:self.n_users]
+            result.extend((users, items))
+        return result
 
     def hyperedge_logits(self, features, projection):
         if self.hyper_input_norm != 'off':

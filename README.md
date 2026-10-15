@@ -1,6 +1,10 @@
 # LGMRec / LGMRecOpt
 
-最新（2026-10-14）：[全面审查、TRAIN 诊断与超边公共方向去除](docs/COMPREHENSIVE_AUDIT_20261014.md)。历史 B 权重存在视觉超边高度集中和分配下溢；新增无参数候选 `hyper_centered`，本地三轮检查缓解该现象，完整推荐效果尚未验证。同时修复全精度选模、最优权重即时原子保存，新增 `--audit` 自动导出 TRAIN 诊断。默认保留 B，不叠加旧候选。
+最新实现（2026-10-15）：[TRAIN 群组稀疏超图重构与运行命令](docs/SPARSE_GROUP_REFACTOR_20261015.md)。新增 `sparse_hyper`、`sparse_nohcl` 和均匀权重对照，替换原四原型 GHE，复用现有投影，无新增可训练参数。默认 B 保留，完整三种子效果待验证。
+
+最新回传结果：[hyper_centered 三种子结果与下一步结构方案](docs/HYPER_CENTERED_RESULTS_NEXT_PLAN_20261015.md)。同轮 VALID R@20 均值 B=.101311、候选=.100612（-0.69%），两个种子下降。数值集中缓解未转化为推荐收益，因此没有升级默认模型。
+
+2026-10-14：[全面审查、TRAIN 诊断与超边公共方向去除](docs/COMPREHENSIVE_AUDIT_20261014.md)。历史 B 权重存在视觉超边高度集中和分配下溢；新增无参数候选 `hyper_centered`，本地三轮检查缓解该现象，后续完整结果见上文。同时修复全精度选模、最优权重即时原子保存，新增 `--audit` 自动导出 TRAIN 诊断。
 
 上一轮：[协同 HCL 结果与 user_mean 候选](docs/COLLAB_HCL_RESULTS_USER_MEAN_PLAN.md)。HCL 替换基本持平；user_mean 尚无回传产物，仅记录用户观察未见明显提升。
 
